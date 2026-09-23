@@ -51,7 +51,6 @@
     transform:rotate(-8deg);
   }
   header, main{ position:relative; z-index:1; }
-  header{ z-index:5; }
 
   header{
     padding:22px 18px 18px;
@@ -317,41 +316,6 @@
   }
   @keyframes spin{ to{ transform:rotate(360deg); } }
 
-  /* Menú desplegable (arriba a la izquierda) */
-  .menu-wrap{ position:absolute; top:14px; left:12px; text-align:left; }
-  .menu-btn{
-    background:var(--panel-2); color:var(--text);
-    border:1px solid var(--line); border-radius:8px;
-    width:42px; height:40px; font-size:20px; font-weight:800; line-height:1;
-    cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .menu-btn:active{ filter:brightness(.92); }
-  .menu-panel{
-    display:none;
-    position:absolute; top:calc(100% + 6px); left:0;
-    min-width:180px;
-    background:var(--panel); border:1px solid var(--line);
-    border-radius:10px; overflow:hidden;
-    box-shadow:0 6px 18px rgba(0,0,0,.4);
-  }
-  .menu-panel.open{ display:block; }
-  .menu-item{
-    display:block; width:100%;
-    background:transparent; color:var(--text);
-    border:none; border-bottom:1px solid var(--line);
-    padding:13px 14px; text-align:left;
-    font-family:var(--sans); font-size:14.5px; font-weight:800;
-    cursor:pointer;
-  }
-  .menu-item:last-child{ border-bottom:none; }
-  .menu-item:active{ background:var(--panel-2); }
-
-  .recents-title{
-    font-size:13px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
-    color:var(--accent); margin-bottom:14px;
-  }
-
   ::selection{ background:var(--accent); color:var(--accent-text); }
 </style>
 </head>
@@ -389,12 +353,6 @@
 </div>
 
 <header id="appHeader" role="button" tabindex="0" aria-label="Volver al inicio">
-  <div class="menu-wrap" id="menuWrap" style="display:none;">
-    <button class="menu-btn" id="menuBtn" type="button" aria-label="Menú" aria-haspopup="true" aria-expanded="false">☰</button>
-    <div class="menu-panel" id="menuPanel">
-      <button class="menu-item" id="menuRecents" type="button">🕘 Recientes</button>
-    </div>
-  </div>
   <h1 class="brand">Lacoste</h1>
   <div class="subbrand">Buscador V1 by ruggia</div>
   <div class="status" id="headerStatus">sin datos cargados</div>
@@ -539,12 +497,6 @@
     </div>
     <div class="admin-link" id="btnReset">Actualizar catálogo</div>
     <div class="link-small" id="btnLogoutLocal">Cerrar sesión</div>
-  </section>
-
-  <!-- PANTALLA 4: recientes -->
-  <section class="screen" id="screen-recents">
-    <div class="card" id="recentsCard"></div>
-    <button class="btn btn-ghost" id="btnRecentsBack">Volver a buscar</button>
   </section>
 
 </main>
@@ -1179,7 +1131,6 @@
   function handleAuthChange(user){
     if(!user){
       currentUserProfile = null;
-      updateMenuVisibility();
       showScreen("screen-login");
       return Promise.resolve();
     }
@@ -1190,7 +1141,6 @@
         return auth.signOut();
       }
       currentUserProfile = { uid: user.uid, email: user.email, rol: perfil.rol, local: perfil.local || null };
-      updateMenuVisibility();
       if(perfil.rol === "admin"){
         updateHeaderStatus();
         showScreen("screen-admin");
@@ -1244,146 +1194,13 @@
   function performSearch(codeRaw){
     var code = normCode(codeRaw);
     if(!code) return;
-    var ts = Date.now();
-    addRecent(code, ts);
     if(code.indexOf("*") > -1){
-      renderResults(code, searchByWildcard(code), ts);
+      renderResults(code, searchByWildcard(code));
     } else {
       var item = lookup(code);
-      renderResults(code, item ? [item] : [], ts);
+      renderResults(code, item ? [item] : []);
     }
   }
-
-  // ---------- Recientes (últimos 10 códigos consultados hoy, por usuario) ----------
-  // Se guardan en este dispositivo, separados por usuario (uid), así que no
-  // hace falta tocar las reglas de Firebase.
-
-  var RECENTS_MAX = 10;
-
-  function pad2(n){ return (n < 10 ? "0" : "") + n; }
-
-  function formatDateTime(ts){
-    var d = new Date(ts);
-    return pad2(d.getDate()) + "/" + pad2(d.getMonth() + 1) + "/" + d.getFullYear() +
-      " · " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
-  }
-
-  function dayKey(ts){
-    var d = new Date(ts);
-    return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
-  }
-
-  function recentsKey(){
-    return currentUserProfile ? "lacoste_recientes_" + currentUserProfile.uid : null;
-  }
-
-  function loadRecents(){
-    var key = recentsKey();
-    if(!key) return [];
-    try{
-      var raw = localStorage.getItem(key);
-      var list = raw ? JSON.parse(raw) : [];
-      if(!Array.isArray(list)) return [];
-      var today = dayKey(Date.now());
-      return list.filter(function(e){
-        return e && e.code && e.ts && dayKey(e.ts) === today;
-      });
-    }catch(err){
-      return [];
-    }
-  }
-
-  function addRecent(code, ts){
-    var key = recentsKey();
-    if(!key) return;
-    var norm = code.toLowerCase();
-    // Solo hoy, sin repetir el mismo código (queda el más reciente arriba).
-    var list = loadRecents().filter(function(e){
-      return String(e.code).toLowerCase() !== norm;
-    });
-    list.unshift({ code: code, ts: ts });
-    list = list.slice(0, RECENTS_MAX);
-    try{ localStorage.setItem(key, JSON.stringify(list)); }catch(err){}
-  }
-
-  function consultedLine(ts, marginTop){
-    return '<div class="result-date" style="margin-top:' + marginTop + 'px;">Consultado el ' + escapeHtml(formatDateTime(ts)) + '</div>';
-  }
-
-  function renderRecents(){
-    var card = $("recentsCard");
-    var list = loadRecents();
-    var html = '<div class="recents-title">Recientes</div>';
-
-    if(!list.length){
-      html += '<div class="hint">Todavía no consultaste ningún código hoy.</div>';
-      card.innerHTML = html;
-      return;
-    }
-
-    list.forEach(function(entry, idx){
-      var block;
-      if(entry.code.indexOf("*") > -1){
-        var n = searchByWildcard(entry.code).length;
-        block = '<div class="result-code-big">Búsqueda: ' + escapeHtml(entry.code) + '</div>' +
-          '<div class="result-code">' + n + (n === 1 ? ' coincidencia' : ' coincidencias') + '</div>' +
-          '<button class="btn btn-ghost" type="button" data-recent-code="' + escapeHtml(entry.code) + '" style="margin-top:12px;">Ver coincidencias</button>';
-      } else {
-        var item = lookup(entry.code);
-        block = item
-          ? itemBlock(item)
-          : '<div class="result-code">Código: ' + escapeHtml(entry.code) + '</div>' +
-            '<div class="not-found">No se encontró ningún producto con ese código.</div>';
-      }
-      html += '<div' + (idx > 0 ? ' class="result-multi-item"' : '') + '>' +
-        block + consultedLine(entry.ts, 10) + '</div>';
-    });
-
-    card.innerHTML = html;
-
-    Array.prototype.forEach.call(card.querySelectorAll("[data-recent-code]"), function(btn){
-      btn.addEventListener("click", function(){
-        var code = btn.getAttribute("data-recent-code");
-        showScreen("screen-scan");
-        performSearch(code);
-      });
-    });
-  }
-
-  function openRecents(){
-    closeMenu();
-    if(scanning) stopScanning();
-    renderRecents();
-    showScreen("screen-recents");
-  }
-
-  // ---------- Menú desplegable ----------
-
-  function closeMenu(){
-    var panel = $("menuPanel");
-    if(panel) panel.classList.remove("open");
-    var btn = $("menuBtn");
-    if(btn) btn.setAttribute("aria-expanded", "false");
-  }
-
-  function toggleMenu(){
-    var panel = $("menuPanel");
-    var open = !panel.classList.contains("open");
-    panel.classList.toggle("open", open);
-    $("menuBtn").setAttribute("aria-expanded", open ? "true" : "false");
-  }
-
-  function updateMenuVisibility(){
-    var show = !!(currentUserProfile && currentUserProfile.rol !== "admin");
-    $("menuWrap").style.display = show ? "block" : "none";
-    if(!show) closeMenu();
-  }
-
-  $("menuBtn").addEventListener("click", function(e){ e.stopPropagation(); toggleMenu(); });
-  $("menuPanel").addEventListener("click", function(e){ e.stopPropagation(); });
-  $("menuRecents").addEventListener("click", function(e){ e.stopPropagation(); openRecents(); });
-  document.addEventListener("click", closeMenu);
-  $("btnRecentsBack").addEventListener("click", function(){ showScreen("screen-scan"); });
 
   // ---------- Estructura del código (familia + prenda + temporada + color + talle) ----------
   // 13 o 14 caracteres: 2 familia, 4 prenda, 2 temporada, 3 color, 2 o 3 talle.
@@ -1461,7 +1278,6 @@
 
   var lastSearchCode = "";
   var lastSearchItems = [];
-  var lastSearchTs = null;
 
   function buildAlternatesSection(item){
     if(!item.codigo || item.codigo.length < 6) return "";
@@ -1519,11 +1335,9 @@
     altSortEl.addEventListener("change", renderAlt);
   }
 
-  function renderResults(code, items, ts){
+  function renderResults(code, items){
     lastSearchCode = code;
     lastSearchItems = items || [];
-    if(ts) lastSearchTs = ts;
-    var consultedTs = lastSearchTs || Date.now();
 
     var sortWrap = $("sortWrap");
     if(sortWrap) sortWrap.style.display = (lastSearchItems.length > 1) ? "flex" : "none";
@@ -1541,8 +1355,7 @@
     if(!sorted || !sorted.length){
       card.innerHTML =
         '<div class="result-code">Código: '+escapeHtml(code)+'</div>' +
-        '<div class="not-found">No se encontró ningún producto con ese código.</div>' +
-        consultedLine(consultedTs, 10);
+        '<div class="not-found">No se encontró ningún producto con ese código.</div>';
       return;
     }
 
@@ -1550,7 +1363,6 @@
       var item = sorted[0];
       card.innerHTML = itemBlock(item) +
         '<div class="result-date">Datos actualizados al '+escapeHtml(state.loadDateLabel)+'</div>' +
-        consultedLine(consultedTs, 4) +
         buildAlternatesSection(item);
       wireAlternatesUI(card, item);
       return;
@@ -1561,7 +1373,6 @@
       html += '<div'+(idx > 0 ? ' class="result-multi-item"' : '')+'>' + itemBlock(item) + '</div>';
     });
     html += '<div class="result-date">Datos actualizados al '+escapeHtml(state.loadDateLabel)+'</div>';
-    html += consultedLine(consultedTs, 4);
     card.innerHTML = html;
   }
 
@@ -2038,7 +1849,6 @@
   if(appHeaderEl){
     appHeaderEl.addEventListener("click", goHome);
     appHeaderEl.addEventListener("keydown", function(e){
-      if(e.target && e.target.closest && e.target.closest("#menuWrap")) return;
       if(e.key === "Enter" || e.key === " "){ e.preventDefault(); goHome(); }
     });
   }
