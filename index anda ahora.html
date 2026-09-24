@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Consulta de Precios</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.3/JsBarcode.all.min.js"></script>
 <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check-compat.js"></script>
@@ -353,38 +352,6 @@
     color:var(--accent); margin-bottom:14px;
   }
 
-  /* Botón compartir junto a cada producto */
-  .item-head{ display:flex; align-items:flex-start; gap:10px; }
-  .item-head-main{ flex:1; min-width:0; }
-  .share-btn{
-    flex:0 0 auto;
-    width:42px; height:42px;
-    display:flex; align-items:center; justify-content:center;
-    background:var(--panel-2); color:var(--accent);
-    border:1px solid var(--line); border-radius:10px;
-    cursor:pointer;
-    transition:transform .15s cubic-bezier(.22,.61,.36,1), filter .15s ease;
-  }
-  .share-btn:active{ transform:scale(.94); filter:brightness(.92); }
-
-  .share-overlay{
-    position:fixed; inset:0; z-index:65;
-    background:rgba(0,0,0,.6);
-    display:none; align-items:center; justify-content:center;
-    padding:20px;
-  }
-  .share-box{
-    background:var(--panel); border:1px solid var(--line);
-    border-radius:12px; padding:22px;
-    width:100%; max-width:400px;
-    max-height:92dvh; overflow-y:auto;
-  }
-  .share-view{ display:flex; flex-direction:column; gap:12px; }
-  .share-title{ font-size:14px; font-weight:800; text-align:center; color:var(--text); }
-  .share-sub{ font-family:var(--mono); font-size:12.5px; font-weight:700; text-align:center; color:var(--muted); margin-top:-6px; word-break:break-all; }
-  #barcodeImg{ width:100%; height:auto; display:block; border-radius:8px; background:#fff; }
-  a.btn{ text-decoration:none; }
-
   ::selection{ background:var(--accent); color:var(--accent-text); }
 </style>
 </head>
@@ -400,24 +367,6 @@
     <div class="row">
       <button class="btn btn-ghost" id="pinCancel">Cancelar</button>
       <button class="btn btn-primary" id="pinConfirm">Entrar</button>
-    </div>
-  </div>
-</div>
-
-<div class="share-overlay" id="shareModal">
-  <div class="share-box">
-    <div class="share-view" id="shareMenuView">
-      <div class="share-title">Compartir</div>
-      <div class="share-sub" id="shareSub"></div>
-      <button class="btn btn-primary" id="shareWhatsapp" type="button">Compartir en WhatsApp</button>
-      <button class="btn btn-ghost" id="shareBarcode" type="button">Crear código de barra</button>
-      <button class="btn btn-ghost" id="shareClose" type="button">Cancelar</button>
-    </div>
-    <div class="share-view" id="shareBarcodeView" style="display:none;">
-      <img id="barcodeImg" alt="Código de barra" style="display:none;">
-      <div class="banner" id="barcodeMsg" style="display:none; color:var(--bad);"></div>
-      <a class="btn btn-primary" id="barcodeDownload" style="display:none;">Descargar imagen</a>
-      <button class="btn btn-ghost" id="barcodeBack" type="button">Volver</button>
     </div>
   </div>
 </div>
@@ -1497,17 +1446,12 @@
     return escapeHtml(raw.slice(0, -2)) + '<span class="code-color-part">' + escapeHtml(raw.slice(-2)) + '</span>';
   }
 
-  var SHARE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>';
-
   function itemBlock(item){
-    return '<div class="item-head"><div class="item-head-main">' +
-      '<div class="result-code-big">Código: ' + codeWithColorHighlight(item.codigo) + '</div>' +
+    return '<div class="result-code-big">Código: ' + codeWithColorHighlight(item.codigo) + '</div>' +
       (item.alt ? '<div class="result-code">Alt: '+escapeHtml(item.alt)+'</div>' : '') +
       '<div class="result-name">'+escapeHtml(item.desc || item.codigo)+
         (item.talle ? ' · Talle '+escapeHtml(item.talle) : '') +
         (item.color ? ' · '+escapeHtml(item.color) : '') +
-      '</div></div>' +
-      '<button class="share-btn" type="button" data-share-code="'+escapeHtml(item.codigo)+'" aria-label="Compartir">'+SHARE_ICON+'</button>' +
       '</div>' +
       '<div class="result-grid">' +
         '<div class="result-box"><div class="label">Precio</div><div class="value">'+formatMoney(item.precio)+'</div></div>' +
@@ -1639,140 +1583,6 @@
     if(!code.trim()) return;
     performSearch(code);
   }
-
-  // ---------- Compartir (WhatsApp / código de barra) ----------
-
-  var shareItem = null;
-
-  // Texto que se manda por WhatsApp: "Código; Talle; Precio"
-  function shareText(item){
-    var parsed = parseCodeStructure(item.codigo) || {};
-    var talle = item.talle || parsed.talle || "-";
-    return item.codigo + "; " + talle + "; " + formatMoney(item.precio);
-  }
-
-  function showShareMenu(){
-    $("shareBarcodeView").style.display = "none";
-    $("shareMenuView").style.display = "flex";
-  }
-
-  function openShare(item){
-    shareItem = item;
-    $("shareSub").textContent = item.codigo;
-    showShareMenu();
-    $("shareModal").style.display = "flex";
-  }
-
-  function closeShare(){
-    $("shareModal").style.display = "none";
-    shareItem = null;
-  }
-
-  // Dibuja las barras del valor indicado. Si son 13 dígitos válidos usa EAN-13,
-  // en cualquier otro caso usa Code 128 (acepta letras, números y guiones).
-  function drawBarcodeCanvas(value){
-    var bc = document.createElement("canvas");
-    var opts = { displayValue:false, margin:0, width:3, height:120, background:"#ffffff", lineColor:"#000000" };
-    if(/^\d{13}$/.test(value)){
-      try{
-        opts.format = "EAN13";
-        JsBarcode(bc, value, opts);
-        return bc;
-      }catch(err){ /* dígito verificador inválido: seguimos con Code 128 */ }
-    }
-    opts.format = "CODE128";
-    JsBarcode(bc, value, opts);
-    return bc;
-  }
-
-  // Imagen final: código arriba (centrado), barras (leen el alternativo) y alternativo abajo.
-  function buildBarcodeImage(item){
-    var bc = drawBarcodeCanvas(item.alt);
-    var pad = 40, gap = 22, topH = 34, botH = 30;
-    var fontFamily = 'ui-monospace, Menlo, Consolas, "Liberation Mono", monospace';
-    var topFont = "bold 34px " + fontFamily;
-    var botFont = "bold 30px " + fontFamily;
-
-    var m = document.createElement("canvas").getContext("2d");
-    m.font = topFont; var w1 = m.measureText(item.codigo).width;
-    m.font = botFont; var w2 = m.measureText(item.alt).width;
-
-    var W = Math.max(460, Math.ceil(Math.max(bc.width, w1, w2)) + pad * 2);
-    var H = pad + topH + gap + bc.height + gap + botH + pad;
-
-    var c = document.createElement("canvas");
-    c.width = W; c.height = H;
-    var ctx = c.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "#000000";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-
-    ctx.font = topFont;
-    ctx.fillText(item.codigo, W / 2, pad);
-    ctx.drawImage(bc, Math.round((W - bc.width) / 2), pad + topH + gap);
-    ctx.font = botFont;
-    ctx.fillText(item.alt, W / 2, pad + topH + gap + bc.height + gap);
-
-    return c.toDataURL("image/png");
-  }
-
-  function showBarcodeView(item){
-    var img = $("barcodeImg"), msg = $("barcodeMsg"), dl = $("barcodeDownload");
-    $("shareMenuView").style.display = "none";
-    $("shareBarcodeView").style.display = "flex";
-    img.style.display = "none";
-    dl.style.display = "none";
-    msg.style.display = "none";
-
-    function fail(text){
-      msg.textContent = text;
-      msg.style.display = "block";
-    }
-
-    if(!item.alt){
-      fail("Este producto no tiene código alternativo, así que no se puede crear el código de barra.");
-      return;
-    }
-    if(typeof JsBarcode === "undefined"){
-      fail("No se pudo cargar el generador de códigos de barra. Revisá tu conexión a internet.");
-      return;
-    }
-    try{
-      var url = buildBarcodeImage(item);
-      img.src = url;
-      img.style.display = "block";
-      dl.href = url;
-      dl.download = "barcode-" + item.alt.replace(/[^A-Za-z0-9_-]/g, "_") + ".png";
-      dl.style.display = "flex";
-    }catch(err){
-      console.error("Error generando el código de barra:", err);
-      fail("No se pudo crear el código de barra con este código alternativo.");
-    }
-  }
-
-  document.addEventListener("click", function(e){
-    var btn = e.target.closest ? e.target.closest("[data-share-code]") : null;
-    if(!btn) return;
-    var item = lookup(btn.getAttribute("data-share-code"));
-    if(item) openShare(item);
-  });
-
-  $("shareWhatsapp").addEventListener("click", function(){
-    if(!shareItem) return;
-    var url = "https://wa.me/?text=" + encodeURIComponent(shareText(shareItem));
-    window.open(url, "_blank");
-    closeShare();
-  });
-  $("shareBarcode").addEventListener("click", function(){
-    if(shareItem) showBarcodeView(shareItem);
-  });
-  $("barcodeBack").addEventListener("click", showShareMenu);
-  $("shareClose").addEventListener("click", closeShare);
-  $("shareModal").addEventListener("click", function(e){
-    if(e.target === $("shareModal")) closeShare();
-  });
 
   // ---------- Escaneo de cámara ----------
 
